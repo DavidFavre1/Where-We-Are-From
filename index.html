@@ -258,7 +258,12 @@
 
     <div class="container">
         <h1>🌍 Where Our Students Are From</h1>
-                    
+        
+        <div class="setup-notice">
+            <h3>📋 Ready to Use!</h3>
+            <p>This map is connected to Google Sheets. Student locations will be saved permanently!</p>
+        </div>
+        
         <div class="input-section">
             <div class="form-group">
                 <input type="text" id="studentName" placeholder="Enter your name" required>
@@ -279,13 +284,44 @@
             </div>
         </div>
 
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 15px;">
+            <h3 style="color: #2c3e50; margin-bottom: 15px;">📋 Instructor Setup Instructions</h3>
+            <ol style="color: #34495e; line-height: 1.6;">
+                <li><strong>Create a Google Sheet:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Go to <a href="https://sheets.google.com" target="_blank">sheets.google.com</a></li>
+                        <li>Create a new sheet with columns: Name, Location, Latitude, Longitude, Timestamp</li>
+                    </ul>
+                </li>
+                <li><strong>Make it public:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Click "Share" → "Change to anyone with the link"</li>
+                        <li>Set permission to "Editor" (so students can add data)</li>
+                    </ul>
+                </li>
+                <li><strong>Get the Sheet ID:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Copy the long ID from the URL (between /d/ and /edit)</li>
+                        <li>Replace SHEET_ID in the code below with your actual ID</li>
+                    </ul>
+                </li>
+                <li><strong>Update the code:</strong>
+                    <ul style="margin: 10px 0;">
+                        <li>Replace the SHEET_ID constant in the JavaScript</li>
+                        <li>Remove the setup notice section</li>
+                    </ul>
+                </li>
+            </ol>
+            <p style="margin-top: 15px; padding: 10px; background: #e8f4f8; border-radius: 8px; font-size: 0.9em;">
+                <strong>Alternative:</strong> For simpler setup, consider using a form service like Google Forms that feeds into a sheet, or use the Firebase option below for more advanced features.
+            </p>
         </div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
     <script>
-        // INSTRUCTOR: Replace this with your Google Sheet ID
-        const SHEET_ID = '1-IO6qhraFa2LNw8k1Z5iOZFcNAuLk_5cZ3Uuac_nQtg';
-        const SHEET_NAME = 'Where_are_we_from';
+        // Your Google Apps Script web app URL
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwXWyx0ZCTa6q6-acX66dLR7nzjv9Lu9-0NcboQGj1RYLOiEUshsxjEJe3jAbD2kMtpaQ/exec';
         
         let map;
         let students = [];
@@ -326,51 +362,41 @@
             }
         }
 
-        // Load students from Google Sheets
+        // Load students from Google Sheets via Apps Script
         async function loadStudents() {
-            if (SHEET_ID === '1-IO6qhraFa2LNw8k1Z5iOZFcNAuLk_5cZ3Uuac_nQtg') {
-                console.log('Google Sheet not configured');
-                updateStudentList();
-                return;
-            }
-
             const loadingOverlay = document.getElementById('loadingOverlay');
             loadingOverlay.style.display = 'flex';
 
             try {
-                const response = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`);
-                const text = await response.text();
-                const json = JSON.parse(text.substr(47).slice(0, -2));
+                const response = await fetch(APPS_SCRIPT_URL);
+                const result = await response.json();
                 
-                students = [];
-                
-                if (json.table && json.table.rows) {
-                    json.table.rows.forEach(row => {
-                        if (row.c && row.c[0] && row.c[1] && row.c[2] && row.c[3]) {
-                            const student = {
-                                name: row.c[0].v,
-                                location: row.c[1].v,
-                                coordinates: {
-                                    lat: row.c[2].v,
-                                    lng: row.c[3].v
-                                }
-                            };
-                            students.push(student);
-                            
-                            // Add marker to map
-                            const marker = L.marker([student.coordinates.lat, student.coordinates.lng]).addTo(map);
-                            marker.bindPopup(`
-                                <div class="custom-popup">
-                                    <div class="student-name">${student.name}</div>
-                                    <div class="student-location">${student.location}</div>
-                                </div>
-                            `);
+                if (result.success) {
+                    students = result.students.map(s => ({
+                        name: s.name,
+                        location: s.location,
+                        coordinates: {
+                            lat: s.latitude,
+                            lng: s.longitude
                         }
+                    }));
+                    
+                    // Add markers to map
+                    students.forEach(student => {
+                        const marker = L.marker([student.coordinates.lat, student.coordinates.lng]).addTo(map);
+                        marker.bindPopup(`
+                            <div class="custom-popup">
+                                <div class="student-name">${student.name}</div>
+                                <div class="student-location">${student.location}</div>
+                            </div>
+                        `);
                     });
+                    
+                    updateStudentList();
+                    console.log(`Loaded ${students.length} students from Google Sheets`);
+                } else {
+                    console.error('Error loading students:', result.error);
                 }
-                
-                updateStudentList();
-                console.log(`Loaded ${students.length} students from Google Sheets`);
                 
             } catch (error) {
                 console.error('Error loading students:', error);
@@ -380,25 +406,34 @@
             }
         }
 
-        // Save student to Google Sheets
-        async function saveToGoogleSheets(student) {
-            if (SHEET_ID === '1-IO6qhraFa2LNw8k1Z5iOZFcNAuLk_5cZ3Uuac_nQtg') {
-                console.log('Google Sheet not configured - using memory storage only');
-                return true;
-            }
+        // REPLACE THIS URL with your Google Apps Script web app URL
+        const APPS_SCRIPT_URL = 'YOUR_APPS_SCRIPT_URL_HERE';
 
+        // Save student to Google Sheets via Apps Script
+        async function saveToGoogleSheets(student) {
             try {
-                const formData = new FormData();
-                formData.append('Name', student.name);
-                formData.append('Location', student.location);
-                formData.append('Latitude', student.coordinates.lat);
-                formData.append('Longitude', student.coordinates.lng);
-                formData.append('Timestamp', new Date().toISOString());
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: student.name,
+                        location: student.location,
+                        latitude: student.coordinates.lat,
+                        longitude: student.coordinates.lng
+                    })
+                });
                 
-                // Note: This is a simplified example. For full Google Sheets integration,
-                // you'd need to use Google Apps Script or the Sheets API
-                console.log('Would save to Google Sheets:', student);
-                return true;
+                const result = await response.json();
+                if (!result.success) {
+                    console.error('Apps Script error:', result.error);
+                    if (result.error.includes('already exists')) {
+                        showError('This student name already exists in the database');
+                        return false;
+                    }
+                }
+                return result.success;
                 
             } catch (error) {
                 console.error('Error saving to Google Sheets:', error);
